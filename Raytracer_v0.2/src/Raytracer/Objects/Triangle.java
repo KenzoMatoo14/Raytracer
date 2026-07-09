@@ -32,8 +32,13 @@ public class Triangle extends Object3D {
     // Face normal vector computed from the triangle's geometry
     private Vector3D faceNormal;
 
-    // Static counter to track the number of ray-triangle intersection tests performed
-    public static long triangleTests = 0;
+    // Static counter to track the number of ray-triangle intersection tests performed.
+    // Uses LongAdder instead of a plain long: under parallel rendering, many threads
+    // incrementing a shared `long` field via `triangleTests++` cause cache-line contention
+    // (false sharing) severe enough to noticeably slow down the render itself, since this is
+    // called on the order of hundreds of millions of times. LongAdder stripes the counter
+    // internally across cells to avoid that contention.
+    public static java.util.concurrent.atomic.LongAdder triangleTests = new java.util.concurrent.atomic.LongAdder();
 
     // Texture coordinates for each vertex (u,v mapping)
     private Vector3D[] texCoords = null;
@@ -154,7 +159,7 @@ public class Triangle extends Object3D {
     @Override
     public Intersection intersect(Ray ray) {
         // Increment global counter for performance statistics
-        triangleTests++;
+        triangleTests.increment();
 
         // Get vertex positions and normals for easier access
         Vector3D v0 = vertices[0], v1 = vertices[1], v2 = vertices[2];

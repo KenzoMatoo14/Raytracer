@@ -177,6 +177,11 @@ public class Raytracer {
 
     /**
      * Renders the scene with optional supersampling anti-aliasing.
+     * Parallelized at the pixel level (not row level) so the work-stealing scheduler can balance
+     * uneven per-pixel cost (e.g. rows that cross a lot of reflective/refractive geometry cost far
+     * more than empty background rows) across threads more evenly than row-granularity chunks.
+     * Writes directly into the BufferedImage's backing int[] array instead of calling setRGB per
+     * pixel, avoiding per-call color-model conversion overhead.
      * @param width    Output image width in pixels
      * @param height   Output image height in pixels
      * @param filename Output image filename
@@ -184,6 +189,10 @@ public class Raytracer {
      */
     public void render(int width, int height, String filename, int aaSamples) {
         BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+        // Direct handle to the image's backing pixel array (TYPE_INT_RGB → int[] of packed RGB).
+        // Writing here avoids the per-pixel overhead of BufferedImage.setRGB's color model lookup.
+        int[] imgData = ((java.awt.image.DataBufferInt) image.getRaster().getDataBuffer()).getData();
+
         System.out.println("Rendering scene at " + width + "x" + height +
                 " with " + aaSamples + "x AA...");
 
@@ -191,62 +200,73 @@ public class Raytracer {
         int gridSize = (int) Math.sqrt(aaSamples);
         // Recompute aaSamples to be a perfect square
         aaSamples = gridSize * gridSize;
+        final int finalAaSamples = aaSamples;
+        final int finalGridSize = gridSize;
 
         long rayStart = System.nanoTime();
-        int rayCount = 0;
 
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
+        // Progress reporting needs a thread-safe counter since pixels complete out of order
+        // under parallel execution.
+        java.util.concurrent.atomic.AtomicInteger pixelsDone = new java.util.concurrent.atomic.AtomicInteger(0);
+        long totalPixels = (long) width * height;
+        long progressStep = Math.max(1, totalPixels / 10);
 
-                double rAccum = 0, gAccum = 0, bAccum = 0;
+        // Flatten to a single pixel-index range instead of one task per row. With ~8.8M
+        // individual units of work instead of `height` row-sized chunks, the parallel scheduler
+        // has far more granularity to balance uneven per-pixel cost across threads.
+        java.util.stream.IntStream.range(0, (int) totalPixels).parallel().forEach(idx -> {
+            int x = idx % width;
+            int y = idx / width;
 
-                if (aaSamples <= 1) {
-                    // Fast path — no anti-aliasing
-                    double normX = (double) x / (width - 1);
-                    double normY = (double) y / (height - 1);
-                    Color c = traceSample(normX, normY);
-                    rAccum = c.getRed();
-                    gAccum = c.getGreen();
-                    bAccum = c.getBlue();
-                } else {
-                    // Stratified (jittered) supersampling
-                    for (int sy = 0; sy < gridSize; sy++) {
-                        for (int sx = 0; sx < gridSize; sx++) {
-                            // Jitter within sub-pixel cell for stratified sampling
-                            double jx = (sx + Math.random()) / gridSize;
-                            double jy = (sy + Math.random()) / gridSize;
-                            double normX = (x + jx - 0.5) / (width  - 1);
-                            double normY = (y + jy - 0.5) / (height - 1);
-                            Color c = traceSample(normX, normY);
-                            rAccum += c.getRed();
-                            gAccum += c.getGreen();
-                            bAccum += c.getBlue();
-                        }
+            double rAccum = 0, gAccum = 0, bAccum = 0;
+
+            if (finalAaSamples <= 1) {
+                double normX = (double) x / (width - 1);
+                double normY = (double) y / (height - 1);
+                Color c = traceSample(normX, normY);
+                rAccum = c.getRed();
+                gAccum = c.getGreen();
+                bAccum = c.getBlue();
+            } else {
+                for (int sy = 0; sy < finalGridSize; sy++) {
+                    for (int sx = 0; sx < finalGridSize; sx++) {
+                        double jx = (sx + Math.random()) / finalGridSize;
+                        double jy = (sy + Math.random()) / finalGridSize;
+                        double normX = (x + jx - 0.5) / (width - 1);
+                        double normY = (y + jy - 0.5) / (height - 1);
+                        Color c = traceSample(normX, normY);
+                        rAccum += c.getRed();
+                        gAccum += c.getGreen();
+                        bAccum += c.getBlue();
                     }
-                    rAccum /= aaSamples;
-                    gAccum /= aaSamples;
-                    bAccum /= aaSamples;
                 }
-
-                // Clamp and set final pixel color
-                int r = Math.min(255, Math.max(0, (int) Math.round(rAccum)));
-                int g = Math.min(255, Math.max(0, (int) Math.round(gAccum)));
-                int b = Math.min(255, Math.max(0, (int) Math.round(bAccum)));
-                image.setRGB(x, y, new Color(r, g, b).getRGB());
-                rayCount += aaSamples;
+                rAccum /= finalAaSamples;
+                gAccum /= finalAaSamples;
+                bAccum /= finalAaSamples;
             }
 
-            // Progress indicator every 10% of rows
-            if (y % Math.max(1, height / 10) == 0) {
-                System.out.printf("  Progress: %d%%\n", (int)(100.0 * y / height));
+            int r = Math.min(255, Math.max(0, (int) Math.round(rAccum)));
+            int g = Math.min(255, Math.max(0, (int) Math.round(gAccum)));
+            int b = Math.min(255, Math.max(0, (int) Math.round(bAccum)));
+
+            // Pack into 0xRRGGBB and write directly to the backing array. Each thread only ever
+            // writes to its own pixel index, so this is safe without synchronization.
+            imgData[idx] = (r << 16) | (g << 8) | b;
+
+            int done = pixelsDone.incrementAndGet();
+            if (done % progressStep == 0) {
+                System.out.printf("  Progress: %d%%\n", (int) (100.0 * done / totalPixels));
             }
-        }
+        });
 
         long rayEnd = System.nanoTime();
+        long rayCount = totalPixels * finalAaSamples;
         System.out.printf("Render time: %.3f s | Rays traced: %,d\n",
                 (rayEnd - rayStart) / 1e9, rayCount);
         System.out.printf("Triangle tests: %,d | Avg per ray: %.1f\n",
-                Triangle.triangleTests, (double) Triangle.triangleTests / rayCount);
+                Triangle.triangleTests.sum(), (double) Triangle.triangleTests.sum() / rayCount);
+        System.out.printf("Box tests: %,d | Avg box tests per ray: %.2f\n",
+                BVHNode.boxTests.sum(), (double) BVHNode.boxTests.sum() / rayCount);
 
         try {
             File output = new File(filename);
@@ -279,10 +299,6 @@ public class Raytracer {
         }
     }
 
-    /**
-     * Main method to run the raytracer application
-     * Sets up the scene, camera, objects, lights, and renders the final image
-     */
     public static void main(String[] args) {
         long startTotal = System.nanoTime();
 
@@ -308,44 +324,114 @@ public class Raytracer {
         // === OBJECT LOADING ===
         long startOBJ = System.nanoTime();
 
-        BufferedImage SpiderlilyTexture = Raytracer.loadTexture("src/Raytracer/Textures/Spiderlily.png");
-        Model3D Spiderlily = ObjectReader.loadModel(
-                "src/Raytracer/Models/Spiderlily.obj", // 3D model file path
-                new Vector3D(0, -2, -2),      // Position in world space
-                new Vector3D(2, 2, 2),     // Uniform scaling factor
-                new Vector3D(0, 0, 0),         // Rotation (X, Y, Z degrees)
-                Color.WHITE,  // Base color
-                Material.MATTE.copy().setAmbient(0.09).setDiffuse(0.60).setSpecular(0.06).setShininess(8).setReflectivity(0),
-                SpiderlilyTexture  // Spiderlily Texture
+        BufferedImage OrchidTexture = Raytracer.loadTexture("src/Raytracer/Textures/Orchid.jpg");
+        Model3D Orchid = ObjectReader.loadModel("src/Raytracer/Models/Orchid.obj", // 3D model file path
+                new Vector3D(-0.4, -1.3, -2),      // Position in world space
+                new Vector3D(0.1, 0.1, 0.1),     // Uniform scaling factor
+                new Vector3D(-30, -45, 0),         // Rotation (X, Y, Z degrees)
+                new Color(0.92f, 0.9f, 0.85f),  // Base color
+                Material.METAL.copy()
+                        .setAmbient(0.03)
+                        .setDiffuse(0.4)
+                        .setSpecular(0.75)
+                        .setShininess(70)
+                        .setReflectivity(0.15),
+                OrchidTexture  // Orchid Texture
         );
-        scene.addObject(Spiderlily);
+        scene.addObject(Orchid);
+        Model3D Orchid2 = ObjectReader.loadModel("src/Raytracer/Models/Orchid.obj", // 3D model file path
+                new Vector3D(0, -0.7, -2),
+                new Vector3D(0.1, 0.1, 0.1),
+                new Vector3D(-30, 5, -25),
+                new Color(0.92f, 0.9f, 0.85f),  // Base color
+                Material.METAL.copy()
+                        .setAmbient(0.03)
+                        .setDiffuse(0.4)
+                        .setSpecular(0.75)
+                        .setShininess(70)
+                        .setReflectivity(0.15),
+                OrchidTexture
+        );
+        scene.addObject(Orchid2);
+        Model3D Orchid3 = ObjectReader.loadModel(
+                "src/Raytracer/Models/Orchid.obj",
+                new Vector3D(-0.3, -0.25, -2.05),      // arriba, centrada tirando a izquierda
+                new Vector3D(0.1, 0.1, 0.1),
+                new Vector3D(-20, 25, -40),       // continúa la torsión de Orchid2 gradualmente
+                new Color(0.92f, 0.9f, 0.85f),  // Base color
+                Material.METAL.copy()
+                        .setAmbient(0.03)
+                        .setDiffuse(0.4)
+                        .setSpecular(0.75)
+                        .setShininess(70)
+                        .setReflectivity(0.15),
+                OrchidTexture
+        );
+        scene.addObject(Orchid3);
+        Model3D Orchid4 = ObjectReader.loadModel("src/Raytracer/Models/Orchid.obj",
+                new Vector3D(0, 0.35, -2.2),
+                new Vector3D(0.1, 0.1, 0.1),
+                new Vector3D(-45, 15, 60),
+                new Color(0.92f, 0.9f, 0.85f),  // Base color
+                Material.METAL.copy()
+                        .setAmbient(0.03)
+                        .setDiffuse(0.4)
+                        .setSpecular(0.75)
+                        .setShininess(70)
+                        .setReflectivity(0.15),
+                OrchidTexture
+        );
+        scene.addObject(Orchid4);
+        Model3D Orchid5 = ObjectReader.loadModel("src/Raytracer/Models/Orchid.obj",
+                new Vector3D(0, 0.4, -2.2),
+                new Vector3D(0.085, 0.085, 0.085),
+                new Vector3D(-10, -20, -25),
+                new Color(0.92f, 0.9f, 0.85f),  // Base color
+                Material.METAL.copy()
+                        .setAmbient(0.03)
+                        .setDiffuse(0.4)
+                        .setSpecular(0.75)
+                        .setShininess(70)
+                        .setReflectivity(0.15),
+                OrchidTexture
+        );
+        scene.addObject(Orchid5);
 
         long endOBJ = System.nanoTime();
         System.out.printf("OBJ Loading time: %.3f s\n", (endOBJ - startOBJ) / 1e9);
 
         // === LIGHTING SETUP ===
 
-        // Luz principal cálida desde arriba-izquierda
+        // Azul dominante — más intensidad, cono más abierto, ligeramente desaturado
         scene.addLight(new SpotLight(
-                new Vector3D(-1, 4, -0.5),
-                new Vector3D(0.2, -1, -0.4),
-                new Color(0.95f, 0.78f, 0.55f),   // ámbar cálido
-                8,
-                55, 75
+                new Vector3D(-1, 5.5, -0.5),
+                new Vector3D(0.3, -1, -0.3),
+                new Color(0.3f, 0.25f, 0.9f),
+                48,
+                22, 38
         ));
 
-        // Relleno dorado desde abajo muy suave
-        scene.addLight(new PointLight(
-                new Vector3D(0.5, -2.5, -1.5),
-                new Color(0.8f, 0.55f, 0.25f),  // dorado oscuro
-                1.2
+        // Rojo desde abajo — más intensidad, cono más abierto, menos saturado
+        scene.addLight(new SpotLight(
+                new Vector3D(0, -4.5, -0.5),
+                new Vector3D(0, 1, -0.5),
+                new Color(0.85f, 0.1f, 0.1f),
+                14,
+                20, 35
         ));
 
-        // Rim cálido desde atrás para separar del fondo
+        // Rim rojo desde la derecha — un poco más de intensidad
         scene.addLight(new PointLight(
-                new Vector3D(-1.5, 1, -4),
-                new Color(0.9f, 0.65f, 0.3f),   // dorado suave
-                1.5
+                new Vector3D(3.5, 1, -2),
+                new Color(0.7f, 0.1f, 0.1f),
+                4
+        ));
+
+        // Fill neutro tenue — levanta las sombras sin quitar el mood bicolor
+        scene.addLight(new PointLight(
+                new Vector3D(0, 0, 2),
+                new Color(0.25f, 0.23f, 0.25f),
+                0.5
         ));
 
         // === BVH ACCELERATION STRUCTURE ===
@@ -374,12 +460,13 @@ public class Raytracer {
 
         long startRender = System.nanoTime();
         // aaSamples: 1 = no AA, 4 = 2×2 grid (good quality), 16 = 4×4 grid (best quality)
-        raytracer.render(2160, 4096, "output.png", 1);
+        raytracer.render(2160, 4096, "output.png", 4);
         long endRender = System.nanoTime();
         System.out.printf("Rendering time: %.3f s\n", (endRender - startRender) / 1e9);
 
         // Display total execution time
         long endTotal = System.nanoTime();
         System.out.printf("Total execution time: %.3f s\n", (endTotal - startTotal) / 1e9);
+
     }
 }
