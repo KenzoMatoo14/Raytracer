@@ -46,6 +46,9 @@ public class Triangle extends Object3D {
     // Texture image for surface appearance
     private BufferedImage texture = null;
 
+    // Cached bounding box — see getBoundingBox() for why this is lazily computed once
+    private BoundingBox cachedBoundingBox = null;
+
     /**
      * Constructor for triangle with explicit vertex normals for smooth shading.
      * @param v0 First vertex position
@@ -259,6 +262,10 @@ public class Triangle extends Object3D {
      */
     @Override
     public BoundingBox getBoundingBox() {
+        if (cachedBoundingBox != null) {
+            return cachedBoundingBox;
+        }
+
         // Find minimum coordinates across all three vertices
         Vector3D min = new Vector3D(
                 Math.min(vertices[0].getX(), Math.min(vertices[1].getX(), vertices[2].getX())),
@@ -273,7 +280,7 @@ public class Triangle extends Object3D {
                 Math.max(vertices[0].getZ(), Math.max(vertices[1].getZ(), vertices[2].getZ()))
         );
 
-        // Return bounding box defined by min and max corners
-        return new BoundingBox(min, max);
+        cachedBoundingBox = new BoundingBox(min, max);
+        return cachedBoundingBox;
     }
 }

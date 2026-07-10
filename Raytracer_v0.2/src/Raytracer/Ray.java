@@ -7,6 +7,11 @@ package Raytracer;
 public class Ray {
     private Vector3D origin;    // Starting point of the ray
     private Vector3D direction; // Direction vector of the ray (normalized)
+    // Precomputed component-wise inverse of direction (1/dx, 1/dy, 1/dz).
+    // BoundingBox.intersect() needs 1/dir for each of the 3 axes on every ray-box test — with
+    // many box tests per ray, computing this once here instead of on every test avoids a lot
+    // of redundant divisions.
+    private Vector3D invDirection;
 
     /**
      * Constructor to create a new ray
@@ -16,6 +21,15 @@ public class Ray {
     public Ray(Vector3D origin, Vector3D direction) {
         this.origin = origin;
         this.direction = direction.normalize(); // Ensure it's a unit vector for consistent calculations
+        this.invDirection = new Vector3D(1.0 / this.direction.x, 1.0 / this.direction.y, 1.0 / this.direction.z);
+    }
+
+    /**
+     * Gets the precomputed component-wise inverse of the ray's direction.
+     * @return Vector3D where each component is 1/direction component
+     */
+    public Vector3D getInvDirection() {
+        return invDirection;
     }
 
     /**

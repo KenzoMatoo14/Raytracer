@@ -69,8 +69,8 @@ public class BoundingBox {
                 // Ray is parallel to the slab - check if origin is within slab bounds
                 if (origin < min.get(i) || origin > max.get(i)) return false;
             } else {
-                // Calculate intersection parameters with the two planes of this slab
-                double invD = 1.0 / dir; // Inverse of direction to avoid division in loop
+                // Use the ray's precomputed inverse direction instead of dividing here.
+                double invD = ray.getInvDirection().get(i);
                 double t0 = (min.get(i) - origin) * invD; // Intersection with min plane
                 double t1 = (max.get(i) - origin) * invD; // Intersection with max plane
 

@@ -48,9 +48,9 @@ public class Raytracer {
             // Extract intersection properties
             Object3D obj = intersection.getObject();
             Vector3D point = intersection.getPoint();
-            Vector3D normal = intersection.getNormal().normalize();
-            Vector3D incoming = ray.getDirection().normalize();
-            Vector3D viewDir = ray.getDirection().negate().normalize(); // Direction towards viewer
+            Vector3D normal = intersection.getNormal(); // already normalized in Intersection's constructor
+            Vector3D incoming = ray.getDirection(); // Ray's constructor already normalizes this
+            Vector3D viewDir = ray.getDirection().negate(); // negating a unit vector is still unit length
 
             // Compute local illumination using Blinn-Phong shading model
             Color localColor = scene.computeBlinnPhongColor(intersection, viewDir, camera.getNear(), camera.getFar());

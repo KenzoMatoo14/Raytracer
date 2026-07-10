@@ -231,6 +231,28 @@ public class BVHNode {
         return right.intersect(ray, tMin, tMax);
     }
 
+    /**
+     * Tests whether ANY intersection exists within [tMin, tMax], without finding the closest one.
+     * Used for shadow rays — stops at the first occluder found instead of searching for the
+     * globally closest hit.
+     */
+    public boolean intersectAny(Ray ray, double tMin, double tMax) {
+        boxTests.increment();
+        if (!bounds.intersect(ray, tMin, tMax)) return false;
+
+        if (objects != null) {
+            for (Object3D obj : objects) {
+                Intersection hit = obj.intersect(ray);
+                if (hit != null && hit.getT() >= tMin && hit.getT() <= tMax) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        return left.intersectAny(ray, tMin, tMax) || right.intersectAny(ray, tMin, tMax);
+    }
+
     public BoundingBox getBounds() {
         return bounds;
     }

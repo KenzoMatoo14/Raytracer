@@ -178,7 +178,7 @@ public class Scene {
         // Extract surface properties from intersection
         Object3D obj = intersection.getObject();
         Vector3D point = intersection.getPoint();
-        Vector3D normal = intersection.getNormal().normalize();
+        Vector3D normal = intersection.getNormal(); // already normalized in Intersection's constructor
         double attenuation = 1.0; // Light attenuation factor
 
         // Get object color and convert to float array
@@ -214,7 +214,6 @@ public class Scene {
             }
 
             // === Shadow Ray Logic ===
-            // Create shadow ray slightly offset from surface to avoid self-intersection
             // Shadow ray offset along the surface normal (not lightDir) for robustness.
             // Using normal avoids self-intersection on thin/small triangles regardless of
             // the angle between the normal and the light. Offset 1e-3 safely clears
@@ -222,15 +221,12 @@ public class Scene {
             double shadowBias = 1e-3;
             Vector3D shadowOrigin = point.add(normal.multiply(shadowBias));
             Ray shadowRay = new Ray(shadowOrigin, lightDir);
-            Intersection shadowHit = intersect(shadowRay, near, far);
-
-            boolean inShadow = false;
-            if (shadowHit != null) {
-                // Check if shadow intersection is between surface and light
-                if (light instanceof DirectionalLight || shadowHit.getT() < distance - 1e-3) {
-                    inShadow = true;
-                }
-            }
+            // Point/spot lights only care about occluders closer than the light itself;
+            // directional lights have no far bound beyond the camera's far clip plane.
+            // intersectAny stops at the first occluder found instead of searching for the
+            // globally closest hit — shadow tests only need "does anything block the path".
+            double shadowFar = (light instanceof DirectionalLight) ? far : Math.min(far, distance - 1e-3);
+            boolean inShadow = intersectAny(shadowRay, near, shadowFar);
 
             // Calculate half-vector for Blinn-Phong specular reflection
             Vector3D halfVector = lightDir.add(viewDir).normalize();
@@ -306,6 +302,25 @@ public class Scene {
         }
 
         return closestIntersection; // Returns null if no intersection is found
+    }
+
+    /**
+     * Tests whether the scene occludes a ray within [near, far], without computing the closest
+     * hit. Used for shadow rays.
+     */
+    public boolean intersectAny(Ray ray, double near, double far) {
+        if (bvhRoot != null) {
+            return bvhRoot.intersectAny(ray, near, far);
+        }
+
+        for (Object3D object : objects) {
+            Intersection intersection = object.intersect(ray);
+            if (intersection != null) {
+                double t = intersection.getT();
+                if (t >= near && t <= far) return true;
+            }
+        }
+        return false;
     }
 
 }
