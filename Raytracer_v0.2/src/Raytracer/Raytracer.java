@@ -299,174 +299,34 @@ public class Raytracer {
         }
     }
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         long startTotal = System.nanoTime();
 
-        // === SCENE SETUP ===
+        // === SCENE LOADING (from JSON) ===
         long startSceneSetup = System.nanoTime();
-        Scene scene = new Scene(); // Create empty scene
 
-        // Define camera parameters for the viewpoint
-        Vector3D cameraPos = new Vector3D(0, 0, 0);        // Camera position at origin
-        Vector3D lookAt = new Vector3D(0, 0, -1);          // Look down negative Z-axis
-        Vector3D up = new Vector3D(0, 1, 0);               // Y-axis as up direction
-        double fov = 60;          // Field of view in degrees
-        double aspectRatio = 0.5273;   // Width/height ratio (adjust for image dimensions)
-        double near = 0.1;        // Near clipping plane (prevents extreme closeness)
-        double far = 400;         // Far clipping plane
-
-        // Create camera with specified parameters
-        Camera camera = new Camera(cameraPos, lookAt, up, fov, aspectRatio, near, far);
+        SceneLoader.LoadedScene loaded = SceneLoader.load("src/Raytracer/Scenes/orchid_scene.json");
 
         long endSceneSetup = System.nanoTime();
-        System.out.printf("Scene setup time: %.3f s\n", (endSceneSetup - startSceneSetup) / 1e9);
-
-        // === OBJECT LOADING ===
-        long startOBJ = System.nanoTime();
-
-        BufferedImage OrchidTexture = Raytracer.loadTexture("src/Raytracer/Textures/Orchid.jpg");
-        Model3D Orchid = ObjectReader.loadModel("src/Raytracer/Models/Orchid.obj", // 3D model file path
-                new Vector3D(-0.4, -1.3, -2),      // Position in world space
-                new Vector3D(0.1, 0.1, 0.1),     // Uniform scaling factor
-                new Vector3D(-30, -45, 0),         // Rotation (X, Y, Z degrees)
-                new Color(0.92f, 0.9f, 0.85f),  // Base color
-                Material.METAL.copy()
-                        .setAmbient(0.03)
-                        .setDiffuse(0.4)
-                        .setSpecular(0.75)
-                        .setShininess(70)
-                        .setReflectivity(0.15),
-                OrchidTexture  // Orchid Texture
-        );
-        scene.addObject(Orchid);
-        Model3D Orchid2 = ObjectReader.loadModel("src/Raytracer/Models/Orchid.obj", // 3D model file path
-                new Vector3D(0, -0.7, -2),
-                new Vector3D(0.1, 0.1, 0.1),
-                new Vector3D(-30, 5, -25),
-                new Color(0.92f, 0.9f, 0.85f),  // Base color
-                Material.METAL.copy()
-                        .setAmbient(0.03)
-                        .setDiffuse(0.4)
-                        .setSpecular(0.75)
-                        .setShininess(70)
-                        .setReflectivity(0.15),
-                OrchidTexture
-        );
-        scene.addObject(Orchid2);
-        Model3D Orchid3 = ObjectReader.loadModel(
-                "src/Raytracer/Models/Orchid.obj",
-                new Vector3D(-0.3, -0.25, -2.05),      // arriba, centrada tirando a izquierda
-                new Vector3D(0.1, 0.1, 0.1),
-                new Vector3D(-20, 25, -40),       // continúa la torsión de Orchid2 gradualmente
-                new Color(0.92f, 0.9f, 0.85f),  // Base color
-                Material.METAL.copy()
-                        .setAmbient(0.03)
-                        .setDiffuse(0.4)
-                        .setSpecular(0.75)
-                        .setShininess(70)
-                        .setReflectivity(0.15),
-                OrchidTexture
-        );
-        scene.addObject(Orchid3);
-        Model3D Orchid4 = ObjectReader.loadModel("src/Raytracer/Models/Orchid.obj",
-                new Vector3D(0, 0.35, -2.2),
-                new Vector3D(0.1, 0.1, 0.1),
-                new Vector3D(-45, 15, 60),
-                new Color(0.92f, 0.9f, 0.85f),  // Base color
-                Material.METAL.copy()
-                        .setAmbient(0.03)
-                        .setDiffuse(0.4)
-                        .setSpecular(0.75)
-                        .setShininess(70)
-                        .setReflectivity(0.15),
-                OrchidTexture
-        );
-        scene.addObject(Orchid4);
-        Model3D Orchid5 = ObjectReader.loadModel("src/Raytracer/Models/Orchid.obj",
-                new Vector3D(0, 0.4, -2.2),
-                new Vector3D(0.085, 0.085, 0.085),
-                new Vector3D(-10, -20, -25),
-                new Color(0.92f, 0.9f, 0.85f),  // Base color
-                Material.METAL.copy()
-                        .setAmbient(0.03)
-                        .setDiffuse(0.4)
-                        .setSpecular(0.75)
-                        .setShininess(70)
-                        .setReflectivity(0.15),
-                OrchidTexture
-        );
-        scene.addObject(Orchid5);
-
-        long endOBJ = System.nanoTime();
-        System.out.printf("OBJ Loading time: %.3f s\n", (endOBJ - startOBJ) / 1e9);
-
-        // === LIGHTING SETUP ===
-
-        // Azul dominante — más intensidad, cono más abierto, ligeramente desaturado
-        scene.addLight(new SpotLight(
-                new Vector3D(-1, 5.5, -0.5),
-                new Vector3D(0.3, -1, -0.3),
-                new Color(0.3f, 0.25f, 0.9f),
-                48,
-                22, 38
-        ));
-
-        // Rojo desde abajo — más intensidad, cono más abierto, menos saturado
-        scene.addLight(new SpotLight(
-                new Vector3D(0, -4.5, -0.5),
-                new Vector3D(0, 1, -0.5),
-                new Color(0.85f, 0.1f, 0.1f),
-                14,
-                20, 35
-        ));
-
-        // Rim rojo desde la derecha — un poco más de intensidad
-        scene.addLight(new PointLight(
-                new Vector3D(3.5, 1, -2),
-                new Color(0.7f, 0.1f, 0.1f),
-                4
-        ));
-
-        // Fill neutro tenue — levanta las sombras sin quitar el mood bicolor
-        scene.addLight(new PointLight(
-                new Vector3D(0, 0, 2),
-                new Color(0.25f, 0.23f, 0.25f),
-                0.5
-        ));
-
-        // === BVH ACCELERATION STRUCTURE ===
-        long startBVH = System.nanoTime();
-
-        // Build Bounding Volume Hierarchy for fast ray-object intersection tests
-        scene.buildBVH();
-
-        long endBVH = System.nanoTime();
-        System.out.printf("BVH build time: %.3f s\n", (endBVH - startBVH) / 1e9);
+        System.out.printf("Scene load time: %.3f s\n", (endSceneSetup - startSceneSetup) / 1e9);
 
         // Display BVH statistics for performance analysis
-        if (scene.getBVHRoot() != null) {
-            BVHNode root = scene.getBVHRoot();
+        if (loaded.scene.getBVHRoot() != null) {
+            BVHNode root = loaded.scene.getBVHRoot();
             System.out.println("BVH depth: " + root.getDepth());
             System.out.println("Number of leaf nodes: " + root.countLeaves());
             System.out.println("Total triangles in BVH: " + root.countTotalObjects());
         }
 
         // === RENDERING ===
-        Raytracer raytracer = new Raytracer(scene, camera);
-
-        // (Optional) Load a skybox equirectangular texture for background:
-        // BufferedImage skybox = loadTexture("src/Raytracer/Textures/skybox.hdr");
-        // scene.setBackgroundTexture(skybox);
+        Raytracer raytracer = new Raytracer(loaded.scene, loaded.camera);
 
         long startRender = System.nanoTime();
-        // aaSamples: 1 = no AA, 4 = 2×2 grid (good quality), 16 = 4×4 grid (best quality)
-        raytracer.render(2160, 4096, "output.png", 4);
+        raytracer.render(loaded.width, loaded.height, loaded.outputFile, loaded.aaSamples);
         long endRender = System.nanoTime();
         System.out.printf("Rendering time: %.3f s\n", (endRender - startRender) / 1e9);
 
-        // Display total execution time
         long endTotal = System.nanoTime();
         System.out.printf("Total execution time: %.3f s\n", (endTotal - startTotal) / 1e9);
-
     }
 }

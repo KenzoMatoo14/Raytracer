@@ -1,0 +1,132 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Raytracer Scene",
+  "description": "Configuration file describing camera, materials, models and lights for the Raytracer",
+  "type": "object",
+  "required": ["camera", "render"],
+  "additionalProperties": false,
+  "properties": {
+    "camera": {
+      "type": "object",
+      "required": ["position", "lookAt", "up", "fov", "aspectRatio", "near", "far"],
+      "additionalProperties": false,
+      "properties": {
+        "position": { "$ref": "#/definitions/vec3", "description": "Camera position in world space" },
+        "lookAt": { "$ref": "#/definitions/vec3", "description": "Point the camera is looking at" },
+        "up": { "$ref": "#/definitions/vec3", "description": "Up direction, typically [0,1,0]" },
+        "fov": { "type": "number", "exclusiveMinimum": 0, "maximum": 179, "description": "Field of view in degrees" },
+        "aspectRatio": { "type": "number", "exclusiveMinimum": 0 },
+        "near": { "type": "number", "minimum": 0 },
+        "far": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "materials": {
+      "type": "object",
+      "description": "Named material presets, referenced by name from models",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "base": {
+            "type": "string",
+            "enum": ["GLASS", "METAL", "PLASTIC", "RUBBER", "SHINY", "MATTE", "WATER"],
+            "description": "Base preset material to start from before overrides"
+          },
+          "ambient": { "type": "number", "minimum": 0, "maximum": 1 },
+          "diffuse": { "type": "number", "minimum": 0, "maximum": 1 },
+          "specular": { "type": "number", "minimum": 0, "maximum": 1 },
+          "shininess": { "type": "number", "exclusiveMinimum": 0 },
+          "reflectivity": { "type": "number", "minimum": 0, "maximum": 1 },
+          "ior": { "type": "number", "minimum": 1 },
+          "refractive": { "type": "boolean" }
+        }
+      }
+    },
+    "models": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "position", "scale", "rotation", "color", "material"],
+        "additionalProperties": false,
+        "properties": {
+          "path": { "type": "string", "description": "Path to the .obj file" },
+          "position": { "$ref": "#/definitions/vec3" },
+          "scale": { "$ref": "#/definitions/vec3" },
+          "rotation": { "$ref": "#/definitions/vec3", "description": "Rotation in degrees (X, Y, Z)" },
+          "color": { "$ref": "#/definitions/colorVec", "description": "Base color, RGB in [0,1]" },
+          "material": { "type": "string", "description": "Name of a material defined in the materials block" },
+          "texture": { "type": "string", "description": "Optional path to a texture image" }
+        }
+      }
+    },
+    "lights": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": ["type", "position", "direction", "color", "intensity", "innerAngle", "outerAngle"],
+            "additionalProperties": false,
+            "properties": {
+              "type": { "const": "spot" },
+              "position": { "$ref": "#/definitions/vec3" },
+              "direction": { "$ref": "#/definitions/vec3" },
+              "color": { "$ref": "#/definitions/colorVec" },
+              "intensity": { "type": "number", "minimum": 0 },
+              "innerAngle": { "type": "number", "minimum": 0, "maximum": 180 },
+              "outerAngle": { "type": "number", "minimum": 0, "maximum": 180 }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["type", "position", "color", "intensity"],
+            "additionalProperties": false,
+            "properties": {
+              "type": { "const": "point" },
+              "position": { "$ref": "#/definitions/vec3" },
+              "color": { "$ref": "#/definitions/colorVec" },
+              "intensity": { "type": "number", "minimum": 0 }
+            }
+          },
+          {
+            "type": "object",
+            "required": ["type", "direction", "color", "intensity"],
+            "additionalProperties": false,
+            "properties": {
+              "type": { "const": "directional" },
+              "direction": { "$ref": "#/definitions/vec3" },
+              "color": { "$ref": "#/definitions/colorVec" },
+              "intensity": { "type": "number", "minimum": 0 }
+            }
+          }
+        ]
+      }
+    },
+    "render": {
+      "type": "object",
+      "required": ["width", "height"],
+      "additionalProperties": false,
+      "properties": {
+        "width": { "type": "integer", "exclusiveMinimum": 0 },
+        "height": { "type": "integer", "exclusiveMinimum": 0 },
+        "aaSamples": { "type": "integer", "minimum": 1, "description": "Rounded down to nearest perfect square by the loader" },
+        "output": { "type": "string" }
+      }
+    }
+  },
+  "definitions": {
+    "vec3": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "colorVec": {
+      "type": "array",
+      "items": { "type": "number", "minimum": 0, "maximum": 1 },
+      "minItems": 3,
+      "maxItems": 3,
+      "description": "RGB color, each channel in [0,1]"
+    }
+  }
+}
