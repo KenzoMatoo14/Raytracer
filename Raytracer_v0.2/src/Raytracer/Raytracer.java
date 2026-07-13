@@ -305,7 +305,7 @@ public class Raytracer {
         // === SCENE LOADING (from JSON) ===
         long startSceneSetup = System.nanoTime();
 
-        SceneLoader.LoadedScene loaded = SceneLoader.load("src/Raytracer/Scenes/orchid_scene.json");
+        SceneLoader.LoadedScene loaded = SceneLoader.load("src/Raytracer/Scenes/Dragon_Scene.json");
 
         long endSceneSetup = System.nanoTime();
         System.out.printf("Scene load time: %.3f s\n", (endSceneSetup - startSceneSetup) / 1e9);

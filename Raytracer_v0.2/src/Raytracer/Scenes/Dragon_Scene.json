@@ -1,0 +1,68 @@
+{
+  "$schema": "./schema/scene-schema.json",
+  "camera": {
+    "position": [0, 0, 0],
+    "lookAt": [0, 0, -1],
+    "up": [0, 1, 0],
+    "fov": 60,
+    "aspectRatio": 0.5273,
+    "near": 0.1,
+    "far": 400
+  },
+  "materials": {
+    "dragonScale": {
+      "base": "SHINY",
+      "ambient": 0.1,
+      "diffuse": 0.55,
+      "specular": 0.25,
+      "shininess": 20,
+      "reflectivity": 0.02
+    }
+  },
+  "models": [
+    {
+      "path": "src/Raytracer/Models/Dragon.obj",
+      "position": [0, 0, -6],
+      "scale": [3, 3, 3],
+      "rotation": [0, -45, 0],
+      "color": [1, 1, 1],
+      "material": "dragonScale",
+      "texture": "src/Raytracer/Textures/Dragon.jpg"
+    }
+  ],
+  "lights": [
+    {
+      "type": "spot",
+      "position": [2, 4, 1.5],
+      "direction": [-0.4, -1, -0.5],
+      "color": [1.0, 0.95, 0.88],
+      "intensity": 10,
+      "innerAngle": 30,
+      "outerAngle": 55
+    },
+    {
+      "type": "point",
+      "position": [-2.5, 1, 1],
+      "color": [0.6, 0.62, 0.68],
+      "intensity": 1.2
+    },
+    {
+      "type": "point",
+      "position": [0, -2, 2],
+      "color": [0.4, 0.4, 0.45],
+      "intensity": 0.9
+    },
+    {
+      "type": "point",
+      "position": [1, 1, -1.5],
+      "color": [0.5, 0.48, 0.45],
+      "intensity": 0.7
+    }
+  ],
+  "render": {
+    "width": 2160,
+    "height": 4096,
+    "aaSamples": 4,
+    "output": "output.png"
+  }
+}

@@ -218,7 +218,7 @@ public class Scene {
             // Using normal avoids self-intersection on thin/small triangles regardless of
             // the angle between the normal and the light. Offset 1e-3 safely clears
             // Triangle.EPSILON (1e-6) even on nearly-degenerate geometry.
-            double shadowBias = 1e-3;
+            double shadowBias = Math.max(1e-3, point.magnitude() * 1e-4);
             Vector3D shadowOrigin = point.add(normal.multiply(shadowBias));
             Ray shadowRay = new Ray(shadowOrigin, lightDir);
             // Point/spot lights only care about occluders closer than the light itself;
