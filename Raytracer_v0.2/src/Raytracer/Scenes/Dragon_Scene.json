@@ -7,7 +7,9 @@
     "fov": 60,
     "aspectRatio": 0.5273,
     "near": 0.1,
-    "far": 400
+    "far": 400,
+    "aperture": 0,
+    "focusDistance": 6.0
   },
   "materials": {
     "dragonScale": {

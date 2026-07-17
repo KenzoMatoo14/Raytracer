@@ -17,7 +17,9 @@
         "fov": { "type": "number", "exclusiveMinimum": 0, "maximum": 179, "description": "Field of view in degrees" },
         "aspectRatio": { "type": "number", "exclusiveMinimum": 0 },
         "near": { "type": "number", "minimum": 0 },
-        "far": { "type": "number", "exclusiveMinimum": 0 }
+        "far": { "type": "number", "exclusiveMinimum": 0 },
+        "aperture": {"type": "number", "minimum": 0, "default": 0, "description": "Lens radius for depth of field. 0 = pinhole camera (sharp everywhere)."},
+        "focusDistance": {"type": "number", "minimum": 0, "default": 1, "description": "Distance from camera to the plane that renders in sharp focus."}
       }
     },
     "materials": {

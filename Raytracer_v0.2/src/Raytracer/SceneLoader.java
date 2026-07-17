@@ -37,6 +37,9 @@ public class SceneLoader {
                 camJson.getDouble("far")
         );
 
+        result.camera.setAperture(camJson.optDouble("aperture", 0.0));
+        result.camera.setFocusDistance(camJson.optDouble("focusDistance", 1.0));
+
         // --- Materials (named presets, based on a Material.* base) ---
         Map<String, Material> materials = new HashMap<>();
         if (root.has("materials")) {

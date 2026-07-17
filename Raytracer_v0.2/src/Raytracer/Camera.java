@@ -30,6 +30,12 @@ public class Camera {
     // Far clipping plane distance (farthest objects rendered)
     private double far;
 
+    // Lens radius for depth of field. 0 = pinhole camera (no DoF, original behavior).
+    private double aperture = 0.0;
+
+    // Distance from the camera to the focus plane — objects at this distance render sharp.
+    private double focusDistance = 1.0;
+
     /**
      * Constructor creates a camera with specified parameters.
      * @param position Camera's position in 3D space
@@ -88,8 +94,35 @@ public class Camera {
                 .add(up.multiply(pixelY))       // Add vertical offset
                 .normalize();                   // Normalize to unit length
 
+        if (aperture <= 0.0) {
+            return new Ray(position, rayDirection);
+        }
+
+        // === Depth of Field (thin-lens model) ===
+        // Point on the focus plane this ray would hit with a zero-size aperture.
+        // Everything at this distance from the camera renders sharp.
+        Vector3D focusPoint = position.add(rayDirection.multiply(focusDistance));
+
+        // Pick a random point inside the unit disk (rejection sampling), then scale by aperture
+        double lx, ly;
+        do {
+            lx = 2 * Math.random() - 1;
+            ly = 2 * Math.random() - 1;
+        } while (lx * lx + ly * ly > 1.0);
+        lx *= aperture;
+        ly *= aperture;
+
+        // Offset the ray's origin across the lens using the camera's right/up basis vectors
+        Vector3D lensOffset = right.multiply(lx).add(up.multiply(ly));
+        Vector3D newOrigin = position.add(lensOffset);
+
+        // Aim from the jittered origin back at the same focus point — this is what keeps
+        // objects at focusDistance sharp while everything else blurs based on how far
+        // it is from that plane.
+        Vector3D newDirection = focusPoint.subtract(newOrigin).normalize();
+
         // Create and return ray from camera position in calculated direction
-        return new Ray(position, rayDirection);
+        return new Ray(newOrigin, newDirection);
     }
 
     /**
@@ -122,5 +155,38 @@ public class Camera {
      */
     public double getFar() {
         return far;
+    }
+
+    /**
+     * Sets the lens aperture radius for depth of field.
+     * @param aperture Lens radius; 0 disables DoF (pinhole camera)
+     */
+    public void setAperture(double aperture) {
+        this.aperture = aperture;
+    }
+
+    /**
+     * Gets the current lens aperture radius.
+     * @return Aperture radius (0 = pinhole, no DoF)
+     */
+    public double getAperture() {
+        return aperture;
+    }
+
+    /**
+     * Sets the distance to the focus plane. Objects at this distance from the
+     * camera render in sharp focus; objects farther away blur more.
+     * @param focusDistance Distance from camera position to the focus plane
+     */
+    public void setFocusDistance(double focusDistance) {
+        this.focusDistance = focusDistance;
+    }
+
+    /**
+     * Gets the current focus distance.
+     * @return Distance from camera position to the focus plane
+     */
+    public double getFocusDistance() {
+        return focusDistance;
     }
 }
