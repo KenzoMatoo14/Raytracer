@@ -19,17 +19,33 @@
       "specular": 0.25,
       "shininess": 20,
       "reflectivity": 0.02
+    },
+    "floorMaterial": {
+      "base": "MATTE",
+      "ambient": 0.15,
+      "diffuse": 0.6,
+      "specular": 0.08,
+      "shininess": 8,
+      "reflectivity": 0.0
     }
   },
   "models": [
     {
       "path": "src/Raytracer/Models/Dragon.obj",
-      "position": [0, 0, -6],
+      "position": [0, 0, -4],
       "scale": [3, 3, 3],
       "rotation": [0, -45, 0],
       "color": [1, 1, 1],
       "material": "dragonScale",
       "texture": "src/Raytracer/Textures/Dragon.jpg"
+    },
+    {
+      "path": "src/Raytracer/Models/Plane.obj",
+      "position": [0, -1.5, -5],
+      "scale": [35, 1, 35],
+      "rotation": [0, 0, 0],
+      "color": [0.85, 0.33, 0.3],
+      "material": "floorMaterial"
     }
   ],
   "lights": [
@@ -40,7 +56,7 @@
       "color": [1.0, 0.95, 0.88],
       "intensity": 10,
       "innerAngle": 30,
-      "outerAngle": 55
+      "outerAngle": 55,
     },
     {
       "type": "point",

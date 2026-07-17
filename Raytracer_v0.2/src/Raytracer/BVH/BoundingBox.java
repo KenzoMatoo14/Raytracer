@@ -15,14 +15,29 @@ public class BoundingBox {
     // Small epsilon value used for floating-point comparisons to handle precision issues
     public static final double EPSILON = 1e-8;
 
+    private static final double MIN_THICKNESS = 1e-4;
+
     /**
      * Constructor that creates a bounding box with specified minimum and maximum points.
      * @param min The minimum corner point of the bounding box
      * @param max The maximum corner point of the bounding box
      */
     public BoundingBox(Vector3D min, Vector3D max) {
-        this.min = min;
-        this.max = max;
+        double px = padding(max.getX() - min.getX());
+        double py = padding(max.getY() - min.getY());
+        double pz = padding(max.getZ() - min.getZ());
+
+        this.min = new Vector3D(min.getX() - px, min.getY() - py, min.getZ() - pz);
+        this.max = new Vector3D(max.getX() + px, max.getY() + py, max.getZ() + pz);
+    }
+
+    /**
+     * Computes the half-padding needed on one axis so its total extent reaches
+     * MIN_THICKNESS. Returns 0 if the axis already has enough extent (idempotent —
+     * union()-ing already-padded boxes doesn't keep growing them).
+     */
+    private static double padding(double extent) {
+        return extent < MIN_THICKNESS ? (MIN_THICKNESS - extent) / 2.0 : 0.0;
     }
 
     /**

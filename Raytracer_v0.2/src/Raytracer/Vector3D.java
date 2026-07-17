@@ -320,6 +320,25 @@ public class Vector3D {
     }
 
     /**
+     * Generates a random point uniformly distributed inside a sphere of given radius,
+     * centered at the origin. Uses rejection sampling to avoid the non-uniform density
+     * you'd get from naively scaling random spherical coordinates.
+     * Used for soft-shadow sampling — jittering a light's position within its physical size.
+     * @param radius Radius of the sphere to sample within
+     * @return Random point inside the sphere, or ZERO if radius <= 0
+     */
+    public static Vector3D randomInSphere(double radius) {
+        if (radius <= 0) return ZERO();
+        double x, y, z;
+        do {
+            x = 2 * Math.random() - 1;
+            y = 2 * Math.random() - 1;
+            z = 2 * Math.random() - 1;
+        } while (x * x + y * y + z * z > 1.0);
+        return new Vector3D(x * radius, y * radius, z * radius);
+    }
+
+    /**
      * Hash code consistent with equals — uses rounded values to handle epsilon tolerance.
      */
     @Override

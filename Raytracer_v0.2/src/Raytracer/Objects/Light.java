@@ -17,6 +17,12 @@ public abstract class Light extends Object3D {
     // The brightness/strength of the light source
     private double intensity;
 
+    // Physical size of the light, used for soft shadows. 0 = point light (hard shadows).
+    // For PointLight/SpotLight this is a world-space radius (sphere around the position).
+    // DirectionalLight interprets this as an angular radius in degrees instead (see its
+    // getJitteredDirection()), since a directional light has no meaningful world-space position.
+    protected double radius = 0.0;
+
     /**
      * Constructor for creating a light source.
      * @param Position The position of the light in 3D space (may not be used by all light types)
@@ -44,6 +50,35 @@ public abstract class Light extends Object3D {
      */
     public void setIntensity(double intensity) {
         this.intensity = intensity;
+    }
+
+    /**
+     * Gets the physical size of the light used for soft-shadow sampling.
+     * @return Radius (0 = hard shadows / point light)
+     */
+    public double getRadius() {
+        return radius;
+    }
+
+    /**
+     * Sets the physical size of the light used for soft-shadow sampling.
+     * @param radius New radius; 0 disables soft shadows for this light
+     */
+    public void setRadius(double radius) {
+        this.radius = radius;
+    }
+
+    /**
+     * Returns a randomly jittered position for this light, sampled within a sphere of
+     * `radius` around its actual position. Used by soft-shadow sampling to approximate
+     * the light's physical size — each shadow ray aims at a slightly different point,
+     * and averaging many of them produces a soft penumbra instead of a hard edge.
+     * Returns the exact position unchanged when radius is 0 (hard shadows).
+     * @return Jittered light position for one shadow-ray sample
+     */
+    public Vector3D getJitteredPosition() {
+        if (radius <= 0.0) return getPosition();
+        return getPosition().add(Vector3D.randomInSphere(radius));
     }
 
     /**

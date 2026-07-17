@@ -61,4 +61,37 @@ public class DirectionalLight extends Light{
         // Calculate dot product and clamp to 0 (surfaces facing away from light get no illumination)
         return Math.max(intersection.getNormal().dot(L), 0.0); // Use instance dot
     }
+
+    /**
+     * Returns a randomly jittered version of this light's direction, used for soft-shadow
+     * sampling. Unlike PointLight/SpotLight (which jitter a world-space position), a
+     * directional light has no meaningful position — instead, `radius` is treated as an
+     * angular radius in degrees (like the sun's ~0.5° apparent size), and the direction is
+     * perturbed within a small cone of that angle. Returns the exact direction unchanged
+     * when radius is 0 (hard shadows).
+     * @return Jittered direction for one shadow-ray sample
+     */
+    public Vector3D getJitteredDirection() {
+        if (radius <= 0.0) return direction;
+
+        // Build an orthonormal basis around 'direction' to define the cone's cross-section
+        Vector3D arbitrary = Math.abs(direction.getY()) < 0.99 ? new Vector3D(0, 1, 0) : new Vector3D(1, 0, 0);
+        Vector3D tangent = direction.cross(arbitrary).normalize();
+        Vector3D bitangent = direction.cross(tangent).normalize();
+
+        // Small-angle approximation: offset within a disk of radius tan(angle) in the plane
+        // perpendicular to 'direction', then re-normalize. Fine for the few-degree cones
+        // realistic light sizes need.
+        double maxOffset = Math.tan(Math.toRadians(radius));
+
+        double lx, ly;
+        do {
+            lx = 2 * Math.random() - 1;
+            ly = 2 * Math.random() - 1;
+        } while (lx * lx + ly * ly > 1.0);
+        lx *= maxOffset;
+        ly *= maxOffset;
+
+        return direction.add(tangent.multiply(lx)).add(bitangent.multiply(ly)).normalize();
+    }
 }

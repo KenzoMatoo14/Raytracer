@@ -15,6 +15,12 @@ import static java.lang.Math.clamp;
  * Handles ray-object intersection testing, lighting calculations, and BVH acceleration structure.
  */
 public class Scene {
+    // Number of shadow-ray samples used per light when that light has radius > 0 (soft shadows).
+    // Lights with radius == 0 (the default) still use exactly one hard shadow ray — no cost
+    // change for scenes that don't opt into soft shadows. Raise this for smoother penumbras
+    // on final renders, lower it for fast test renders.
+    private static final int SOFT_SHADOW_SAMPLES = 8;
+
     private List<Object3D> objects; // List of objects in the scene
     private List<Light> lights; // List of light sources in the scene
     private BVHNode bvhRoot = null; // Optional BVH (Bounding Volume Hierarchy) root for acceleration
@@ -167,12 +173,13 @@ public class Scene {
 
     /**
      * Compute color using Blinn-Phong lighting model with ambient, diffuse, and specular components
-     * Includes shadow ray testing for realistic shadows
+     * Includes soft shadow ray testing (multiple jittered samples per light, averaged into a
+     * continuous shadow factor) for realistic penumbras.
      * @param intersection The intersection point containing surface information
      * @param viewDir Direction vector from intersection point to camera
      * @param near Near clipping plane distance
      * @param far Far clipping plane distance
-     * @return Color calculated using Blinn-Phong lighting with shadows
+     * @return Color calculated using Blinn-Phong lighting with soft shadows
      */
     public Color computeBlinnPhongColor(Intersection intersection, Vector3D viewDir, double near, double far) {
         // Extract surface properties from intersection
@@ -201,6 +208,9 @@ public class Scene {
             double distance = Double.POSITIVE_INFINITY;
 
             // Calculate light direction based on light type
+            // NOTE: this uses the light's exact (non-jittered) position/direction — only the
+            // shadow test below samples jittered positions. Keeping shading direction fixed
+            // stops the specular highlight from jumping around between soft-shadow samples.
             if (light instanceof DirectionalLight) {
                 // For directional lights, use negated direction (light rays point towards surface)
                 lightDir = ((DirectionalLight) light).getDirection().negate().normalize();
@@ -213,20 +223,49 @@ public class Scene {
                 attenuation = 1.0 / distance;
             }
 
-            // === Shadow Ray Logic ===
+            // === Shadow Ray Logic (soft shadows via light-radius sampling) ===
             // Shadow ray offset along the surface normal (not lightDir) for robustness.
             // Using normal avoids self-intersection on thin/small triangles regardless of
-            // the angle between the normal and the light. Offset 1e-3 safely clears
-            // Triangle.EPSILON (1e-6) even on nearly-degenerate geometry.
+            // the angle between the normal and the light. Bias is scale-relative so it holds
+            // up on models with sub-unit vertex coordinates.
             double shadowBias = Math.max(1e-3, point.magnitude() * 1e-4);
             Vector3D shadowOrigin = point.add(normal.multiply(shadowBias));
-            Ray shadowRay = new Ray(shadowOrigin, lightDir);
-            // Point/spot lights only care about occluders closer than the light itself;
-            // directional lights have no far bound beyond the camera's far clip plane.
-            // intersectAny stops at the first occluder found instead of searching for the
-            // globally closest hit — shadow tests only need "does anything block the path".
-            double shadowFar = (light instanceof DirectionalLight) ? far : Math.min(far, distance - 1e-3);
-            boolean inShadow = intersectAny(shadowRay, near, shadowFar);
+
+            // radius == 0 (the default) collapses this to exactly one hard shadow ray at the
+            // light's true position — identical cost and result to the pre-soft-shadow code.
+            int shadowSamples = (light.getRadius() > 0) ? SOFT_SHADOW_SAMPLES : 1;
+            int occludedCount = 0;
+
+            for (int s = 0; s < shadowSamples; s++) {
+                Vector3D sampleDir;
+                double sampleFar;
+
+                if (light instanceof DirectionalLight) {
+                    // DirectionalLight interprets radius as an angular radius (degrees) and
+                    // jitters the incoming direction within a small cone instead of a position.
+                    Vector3D jitteredDir = ((DirectionalLight) light).getJitteredDirection();
+                    sampleDir = jitteredDir.negate().normalize();
+                    sampleFar = far;
+                } else {
+                    // PointLight/SpotLight: jitter within a sphere of world-space radius around
+                    // the light's actual position.
+                    Vector3D jitteredPos = light.getJitteredPosition();
+                    Vector3D lv = jitteredPos.subtract(point);
+                    double dist = lv.magnitude();
+                    sampleDir = lv.normalize();
+                    sampleFar = Math.min(far, dist - 1e-3);
+                }
+
+                Ray shadowRay = new Ray(shadowOrigin, sampleDir);
+                // intersectAny stops at the first occluder found instead of searching for the
+                // globally closest hit — shadow tests only need "does anything block the path".
+                if (intersectAny(shadowRay, near, sampleFar)) occludedCount++;
+            }
+
+            // Continuous factor instead of a binary inShadow: 1.0 = fully lit, 0.0 = fully
+            // occluded, anything in between = penumbra. With shadowSamples == 1 this is still
+            // exactly 0.0 or 1.0 — hard shadows, unchanged from before.
+            double shadowFactor = 1.0 - (double) occludedCount / shadowSamples;
 
             // Calculate half-vector for Blinn-Phong specular reflection
             Vector3D halfVector = lightDir.add(viewDir).normalize();
@@ -244,18 +283,13 @@ public class Scene {
 
             // Calculate lighting components for each RGB channel
             for (int i = 0; i < 3; i++) {
-                // Ambient component (always present, independent of lighting)
+                // Ambient component (always present, independent of lighting/shadows)
                 double ambient = ka * objRGB[i];
-                double diffuse = 0;
-                double specular = 0;
 
-                // Only calculate diffuse and specular if not in shadow
-                if (!inShadow) {
-                    // Diffuse component (Lambertian reflection)
-                    diffuse = kd * objRGB[i] * lightRGB[i] * nDotL * intensity * attenuation;
-                    // Specular component (Blinn-Phong highlights)
-                    specular = ks * lightRGB[i] * Math.pow(nDotH, shininess) * intensity * attenuation;
-                }
+                // Diffuse component (Lambertian reflection), scaled by the soft shadow factor
+                double diffuse = kd * objRGB[i] * lightRGB[i] * nDotL * intensity * attenuation * shadowFactor;
+                // Specular component (Blinn-Phong highlights), scaled by the soft shadow factor
+                double specular = ks * lightRGB[i] * Math.pow(nDotH, shininess) * intensity * attenuation * shadowFactor;
 
                 // Accumulate all lighting components
                 finalColor[i] += ambient + diffuse + specular;

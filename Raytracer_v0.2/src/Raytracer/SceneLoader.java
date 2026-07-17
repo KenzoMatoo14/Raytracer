@@ -106,8 +106,9 @@ public class SceneLoader {
         Vector3D pos = vec3(lJson.getJSONArray("position"));
         Color col = color(lJson.getJSONArray("color"));
         double intensity = lJson.getDouble("intensity");
+        double radius = lJson.optDouble("radius", 0.0);
 
-        return switch (type) {
+        Light light = switch (type) {
             case "spot" -> new SpotLight(
                     pos,
                     vec3(lJson.getJSONArray("direction")),
@@ -121,6 +122,9 @@ public class SceneLoader {
             );
             default -> throw new IllegalArgumentException("Unknown light type: " + type);
         };
+
+        light.setRadius(radius);
+        return light;
     }
 
     private static Material resolveBaseMaterial(String name) {
