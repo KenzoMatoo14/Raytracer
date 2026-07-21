@@ -44,6 +44,9 @@ public class Raytracer {
         // Find the closest intersection with scene objects
         Intersection intersection = scene.intersect(ray, camera.getNear(), camera.getFar());
 
+        Color baseColor;
+        double tEnd;
+
         if (intersection != null) {
             // Extract intersection properties
             Object3D obj = intersection.getObject();
@@ -120,7 +123,6 @@ public class Raytracer {
             }
 
             // Blend local shading, reflection, and refraction contributions
-            // Final color = local * (1 - reflectivity) + reflection * fresnel + refraction * (1 - fresnel)
             float r = (float) clamp(
                     localRGB[0] * (1 - reflectivity) +
                             reflectedRGB[0] * fresnel +
@@ -136,15 +138,34 @@ public class Raytracer {
                             reflectedRGB[2] * fresnel +
                             refractedRGB[2] * (1.0 - fresnel) * (refracted ? 1.0 : 0.0),
                     0, 1);
+
+            baseColor = new Color(r, g, b);
+            tEnd = intersection.getT();
+        } else {
+            // No intersection found — sample background texture (skybox) or return black
+            BufferedImage bg = scene.getBackgroundTexture();
+            baseColor = (bg != null) ? sampleSkybox(bg, ray.getDirection()) : Color.BLACK;
+            // Cap how far fog marches on rays that hit nothing, so it doesn't march all the way
+            // to the camera's (often very large) far clip plane.
+            tEnd = Math.min(camera.getFar(), scene.getFogMaxDistance());
+        }
+
+        // === Volumetric fog / god rays ===
+        // Only applied on primary camera rays (depth 0), not on reflection/refraction bounces.
+        // God rays are fundamentally a camera-space effect — the light shafts you see are the
+        // ones between the camera and what it's looking at. Marching fog again inside every
+        // mirror reflection or glass refraction would multiply the cost of an already expensive
+        // pass for a gain that's rarely visible.
+        if (depth == 0 && scene.getFogDensity() > 0.0) {
+            double[] vol = scene.computeVolumetric(ray, camera.getNear(), tEnd);
+            float[] baseRGB = baseColor.getRGBColorComponents(null);
+            float r = (float) clamp(baseRGB[0] * vol[3] + vol[0], 0, 1);
+            float g = (float) clamp(baseRGB[1] * vol[3] + vol[1], 0, 1);
+            float b = (float) clamp(baseRGB[2] * vol[3] + vol[2], 0, 1);
             return new Color(r, g, b);
         }
 
-        // No intersection found — sample background texture (skybox) or return black
-        BufferedImage bg = scene.getBackgroundTexture();
-        if (bg != null) {
-            return sampleSkybox(bg, ray.getDirection());
-        }
-        return Color.BLACK;
+        return baseColor;
     }
 
     /**

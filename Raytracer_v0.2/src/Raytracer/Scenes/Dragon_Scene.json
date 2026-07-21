@@ -14,16 +14,16 @@
   "materials": {
     "dragonScale": {
       "base": "SHINY",
-      "ambient": 0.1,
-      "diffuse": 0.55,
-      "specular": 0.25,
-      "shininess": 20,
-      "reflectivity": 0.02
+      "ambient": 0.02,
+      "diffuse": 0.5,
+      "specular": 0.4,
+      "shininess": 28,
+      "reflectivity": 0.03
     },
     "floorMaterial": {
       "base": "MATTE",
-      "ambient": 0.15,
-      "diffuse": 0.6,
+      "ambient": 0.02,
+      "diffuse": 0.45,
       "specular": 0.08,
       "shininess": 8,
       "reflectivity": 0.0
@@ -44,48 +44,47 @@
       "position": [0, -1.5, -5],
       "scale": [35, 1, 35],
       "rotation": [0, 0, 0],
-      "color": [0.85, 0.33, 0.3],
+      "color": [0.12, 0.05, 0.04],
       "material": "floorMaterial"
     }
   ],
   "lights": [
     {
       "type": "spot",
-      "position": [2, 4, 1.5],
-      "direction": [-0.4, -1, -0.5],
-      "color": [1.0, 0.95, 0.88],
-      "intensity": 10,
-      "innerAngle": 30,
-      "outerAngle": 55,
-      "radius": 0.5
+      "position": [2, 6, -1],
+      "direction": [-0.27, -0.87, -0.4],
+      "color": [1.0, 0.93, 0.8],
+      "intensity": 22,
+      "innerAngle": 10,
+      "outerAngle": 30,
+      "radius": 0.3
     },
     {
-      "type": "point",
-      "position": [-2.5, 1, 1],
-      "color": [0.6, 0.62, 0.68],
-      "intensity": 1.2
-    },
-    {
-      "type": "point",
-      "position": [0, -2, 2],
-      "color": [0.4, 0.4, 0.45],
-      "intensity": 0.9
-    },
-    {
-      "type": "point",
-      "position": [1, 1, -1.5],
-      "color": [0.5, 0.48, 0.45],
-      "intensity": 0.7
+      "type": "spot",
+      "position": [-1.5, 2, -7],
+      "direction": [0.3, -0.3, 1],
+      "color": [0.35, 0.55, 0.85],
+      "intensity": 0.8,
+      "innerAngle": 10,
+      "outerAngle": 20,
+      "radius": 0.15
     }
   ],
+  "fog": {
+    "density": 0.035,
+    "scattering": 0.6,
+    "color": [1.0, 0.9, 0.75],
+    "samples": 28,
+    "maxDistance": 15
+  },
   "render": {
     "width": 2160,
     "height": 4096,
-    "aaSamples": 4,
-    "softShadowSamples": 8,
-    "aoSamples": 8,
+    "aaSamples": 16,
+    "softShadowSamples": 12,
+    "aoSamples": 12,
     "aoRadius": 0.8,
-    "aoStrength": 0.85,
+    "aoStrength": 0.9,
     "output": "output.png"
   }
 }

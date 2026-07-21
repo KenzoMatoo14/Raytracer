@@ -90,6 +90,18 @@ public class SceneLoader {
             }
         }
 
+        // --- Volumetric fog / god rays (optional) ---
+        if (root.has("fog")) {
+            JSONObject fogJson = root.getJSONObject("fog");
+            result.scene.setFogDensity(fogJson.optDouble("density", 0.0));
+            result.scene.setFogScattering(fogJson.optDouble("scattering", 1.0));
+            result.scene.setVolumetricSamples(fogJson.optInt("samples", 24));
+            result.scene.setFogMaxDistance(fogJson.optDouble("maxDistance", 50.0));
+            if (fogJson.has("color")) {
+                result.scene.setFogColor(color(fogJson.getJSONArray("color")));
+            }
+        }
+
         // --- Render settings ---
         JSONObject renderJson = root.getJSONObject("render");
         result.width = renderJson.getInt("width");

@@ -31,6 +31,22 @@ public class Scene {
     // lower values keep some ambient light even in fully-occluded spots (softer look).
     private double aoStrength = 1.0;
 
+    // === Volumetric fog / god rays ===
+    // Density of the participating medium (fog/haze). 0 disables volumetrics entirely —
+    // no cost change for scenes that don't opt in.
+    private double fogDensity = 0.0;
+    // How strongly in-scattered light shows up. Separate from density so you can tune
+    // "how much haze" vs "how bright the light shafts look" independently.
+    private double fogScattering = 1.0;
+    // Tint applied to the scattered light (white = neutral, warm/cool tints add mood)
+    private Color fogColor = Color.WHITE;
+    // Ray-march step count. More samples = smoother light shafts, less banding, more cost.
+    private int volumetricSamples = 24;
+    // Cap on how far fog marches when a primary ray hits nothing (background rays). Without
+    // this, a ray that misses everything would march all the way to the camera's far clip
+    // plane, which is usually far larger than the fog needs to be visible.
+    private double fogMaxDistance = 50.0;
+
     private List<Object3D> objects; // List of objects in the scene
     private List<Light> lights; // List of light sources in the scene
     private BVHNode bvhRoot = null; // Optional BVH (Bounding Volume Hierarchy) root for acceleration
@@ -124,6 +140,13 @@ public class Scene {
         this.aoStrength = clamp(strength, 0.0, 1.0);
     }
 
+    public void setFogDensity(double d) { this.fogDensity = Math.max(0, d); }
+    public void setFogScattering(double s) { this.fogScattering = Math.max(0, s); }
+    public void setFogColor(Color c) { this.fogColor = c; }
+    public void setVolumetricSamples(int n) { this.volumetricSamples = Math.max(1, n); }
+    public void setFogMaxDistance(double d) { this.fogMaxDistance = Math.max(0, d); }
+    public double getFogDensity() { return fogDensity; }
+    public double getFogMaxDistance() { return fogMaxDistance; }
     /**
      * Build BVH (Bounding Volume Hierarchy) from added objects for faster ray intersection
      * Should be called once after all objects are added to the scene
@@ -240,6 +263,95 @@ public class Scene {
 
         double occlusion = (double) occluded / aoSamples;
         return 1.0 - occlusion * aoStrength;
+    }
+
+    /**
+     * Ray-marches through participating media (uniform fog) along [tStart, tEnd], accumulating
+     * in-scattered light from all lights, attenuated by shadow visibility at each sample point.
+     * This is what produces visible "god rays": light shafts appear wherever a light is
+     * unoccluded along the march, and stay dark in shadowed sections — same underlying idea as
+     * shadow rays, just tested at many points hanging in empty air instead of one point on a
+     * surface.
+     * @param ray The camera ray being marched
+     * @param tStart Start of the marching interval (camera near clip)
+     * @param tEnd End of the marching interval (surface hit distance, or fogMaxDistance if no hit)
+     * @return double[4]: [r, g, b, transmittance] — inscattered color to add, and how much of
+     *         the underlying surface/background color survives the fog (multiply by this)
+     */
+    public double[] computeVolumetric(Ray ray, double tStart, double tEnd) {
+        if (fogDensity <= 0.0 || tEnd <= tStart) {
+            return new double[]{0, 0, 0, 1.0};
+        }
+
+        double[] inscattered = new double[3];
+        double transmittance = 1.0;
+
+        double distance = tEnd - tStart;
+        double stepSize = distance / volumetricSamples;
+        float[] fogRGB = fogColor.getRGBColorComponents(null);
+
+        for (int i = 0; i < volumetricSamples; i++) {
+            // Jitter each step within its slice to break up banding artifacts that uniform,
+            // unjittered step spacing produces (visible stripes across the light shaft).
+            double t = tStart + (i + Math.random()) * stepSize;
+            Vector3D point = ray.getPoint(t);
+
+            // Beer-Lambert extinction: how much light survives crossing this one step of fog
+            double stepTransmittance = Math.exp(-fogDensity * stepSize);
+
+            double[] lightSum = sampleLightAtPoint(point);
+
+            for (int c = 0; c < 3; c++) {
+                inscattered[c] += transmittance * (1.0 - stepTransmittance) * lightSum[c] * fogScattering * fogRGB[c];
+            }
+
+            transmittance *= stepTransmittance;
+        }
+
+        return new double[]{inscattered[0], inscattered[1], inscattered[2], transmittance};
+    }
+
+    /**
+     * Sums direct light reaching a point hanging in empty air (no surface, no material) —
+     * used by the volumetric fog marcher. Uses a single hard shadow ray per light rather than
+     * the soft-shadow sampling used for surfaces, since this already runs many times per pixel
+     * (once per march step); softening it further would multiply an already expensive pass.
+     */
+    private double[] sampleLightAtPoint(Vector3D point) {
+        double[] sum = new double[3];
+
+        for (Light light : lights) {
+            Vector3D lightDir;
+            double distance = Double.POSITIVE_INFINITY;
+            double attenuation = 1.0;
+
+            if (light instanceof DirectionalLight) {
+                lightDir = ((DirectionalLight) light).getDirection().negate().normalize();
+            } else {
+                Vector3D lightVec = light.getPosition().subtract(point);
+                distance = lightVec.magnitude();
+                lightDir = lightVec.normalize();
+                attenuation = 1.0 / distance; // Same linear falloff convention used elsewhere in the engine
+            }
+
+            Ray shadowRay = new Ray(point, lightDir);
+            double shadowFar = (light instanceof DirectionalLight) ? fogMaxDistance : distance - 1e-3;
+            if (intersectAny(shadowRay, 1e-3, shadowFar)) continue; // occluded — no light reaches this point
+
+            float[] lightRGB = light.getColor().getRGBColorComponents(null);
+            double intensity = light.getIntensity() * attenuation;
+
+            // Spotlights should only scatter light inside their cone, same as on surfaces
+            if (light instanceof SpotLight) {
+                intensity *= ((SpotLight) light).getSpotFactor(lightDir);
+            }
+
+            sum[0] += lightRGB[0] * intensity;
+            sum[1] += lightRGB[1] * intensity;
+            sum[2] += lightRGB[2] * intensity;
+        }
+
+        return sum;
     }
 
     /**
