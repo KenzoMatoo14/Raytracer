@@ -17,9 +17,19 @@ import static java.lang.Math.clamp;
 public class Scene {
     // Number of shadow-ray samples used per light when that light has radius > 0 (soft shadows).
     // Lights with radius == 0 (the default) still use exactly one hard shadow ray — no cost
-    // change for scenes that don't opt into soft shadows. Raise this for smoother penumbras
-    // on final renders, lower it for fast test renders.
-    private static final int SOFT_SHADOW_SAMPLES = 8;
+    // change for scenes that don't opt into soft shadows.
+    private int softShadowSamples = 8;
+
+    // === Ambient Occlusion settings ===
+    // Number of AO rays per intersection point. 0 disables AO entirely (ambient term behaves
+    // exactly as before) — no cost change for scenes that don't opt in.
+    private int aoSamples = 0;
+    // Max distance an AO ray searches for occluders. Should roughly match the scale of the
+    // geometric detail you want AO to react to (gaps between scales, contact with the floor).
+    private double aoRadius = 1.0;
+    // How strongly occlusion darkens the ambient term, 0..1. 1.0 = full physical darkening,
+    // lower values keep some ambient light even in fully-occluded spots (softer look).
+    private double aoStrength = 1.0;
 
     private List<Object3D> objects; // List of objects in the scene
     private List<Light> lights; // List of light sources in the scene
@@ -80,6 +90,38 @@ public class Scene {
      */
     public BufferedImage getBackgroundTexture() {
         return this.backgroundTexture;
+    }
+
+    /**
+     * Sets the number of shadow ray samples used for soft shadows on lights with radius > 0.
+     * @param n Sample count (minimum 1)
+     */
+    public void setSoftShadowSamples(int n) {
+        this.softShadowSamples = Math.max(1, n);
+    }
+
+    /**
+     * Sets the number of ambient occlusion rays per intersection point.
+     * @param n Sample count; 0 disables AO
+     */
+    public void setAoSamples(int n) {
+        this.aoSamples = Math.max(0, n);
+    }
+
+    /**
+     * Sets the maximum distance an AO ray searches for occluders.
+     * @param radius AO search radius
+     */
+    public void setAoRadius(double radius) {
+        this.aoRadius = radius;
+    }
+
+    /**
+     * Sets how strongly occlusion darkens the ambient term.
+     * @param strength Strength in [0,1]; 1.0 = full physical darkening
+     */
+    public void setAoStrength(double strength) {
+        this.aoStrength = clamp(strength, 0.0, 1.0);
     }
 
     /**
@@ -172,14 +214,42 @@ public class Scene {
     }
 
     /**
+     * Computes an ambient occlusion factor in [0,1] for a surface point by casting cosine-
+     * weighted rays into the hemisphere around its normal and checking how many are blocked
+     * by nearby geometry within aoRadius. 1.0 means fully exposed (no darkening), lower values
+     * mean the point is nestled against other geometry (crevices, contact points) and should
+     * receive less ambient light.
+     * @param point Surface point being shaded
+     * @param normal Surface normal at that point (normalized)
+     * @return Occlusion factor to multiply into the ambient term
+     */
+    private double computeAO(Vector3D point, Vector3D normal) {
+        if (aoSamples <= 0) return 1.0;
+
+        // Same scale-relative bias reasoning as shadow rays — keeps AO rays from
+        // self-intersecting the surface they're cast from.
+        double bias = Math.max(1e-3, point.magnitude() * 1e-4);
+        Vector3D origin = point.add(normal.multiply(bias));
+
+        int occluded = 0;
+        for (int i = 0; i < aoSamples; i++) {
+            Vector3D dir = Vector3D.randomCosineHemisphere(normal);
+            Ray aoRay = new Ray(origin, dir);
+            if (intersectAny(aoRay, 0.0, aoRadius)) occluded++;
+        }
+
+        double occlusion = (double) occluded / aoSamples;
+        return 1.0 - occlusion * aoStrength;
+    }
+
+    /**
      * Compute color using Blinn-Phong lighting model with ambient, diffuse, and specular components
-     * Includes soft shadow ray testing (multiple jittered samples per light, averaged into a
-     * continuous shadow factor) for realistic penumbras.
+     * Includes soft shadow ray testing and ambient occlusion for realistic contact shadowing.
      * @param intersection The intersection point containing surface information
      * @param viewDir Direction vector from intersection point to camera
      * @param near Near clipping plane distance
      * @param far Far clipping plane distance
-     * @return Color calculated using Blinn-Phong lighting with soft shadows
+     * @return Color calculated using Blinn-Phong lighting with soft shadows and AO
      */
     public Color computeBlinnPhongColor(Intersection intersection, Vector3D viewDir, double near, double far) {
         // Extract surface properties from intersection
@@ -197,6 +267,10 @@ public class Scene {
         double kd = obj.getDiffuseCoeff();    // Diffuse reflection coefficient
         double ks = obj.getSpecularCoeff();   // Specular reflection coefficient
         double shininess = obj.getShininess(); // Specular shininess exponent
+
+        // Ambient occlusion is a property of the point's geometric surroundings, independent
+        // of any single light, so it's computed once per intersection rather than per light.
+        double aoFactor = computeAO(point, normal);
 
         // Initialize color accumulator
         double[] finalColor = new double[3];
@@ -233,7 +307,7 @@ public class Scene {
 
             // radius == 0 (the default) collapses this to exactly one hard shadow ray at the
             // light's true position — identical cost and result to the pre-soft-shadow code.
-            int shadowSamples = (light.getRadius() > 0) ? SOFT_SHADOW_SAMPLES : 1;
+            int shadowSamples = (light.getRadius() > 0) ? softShadowSamples : 1;
             int occludedCount = 0;
 
             for (int s = 0; s < shadowSamples; s++) {
@@ -283,8 +357,8 @@ public class Scene {
 
             // Calculate lighting components for each RGB channel
             for (int i = 0; i < 3; i++) {
-                // Ambient component (always present, independent of lighting/shadows)
-                double ambient = ka * objRGB[i];
+                // Ambient component, darkened by ambient occlusion (contact points, crevices)
+                double ambient = ka * objRGB[i] * aoFactor;
 
                 // Diffuse component (Lambertian reflection), scaled by the soft shadow factor
                 double diffuse = kd * objRGB[i] * lightRGB[i] * nDotL * intensity * attenuation * shadowFactor;

@@ -97,6 +97,11 @@ public class SceneLoader {
         result.aaSamples = renderJson.optInt("aaSamples", 1);
         result.outputFile = renderJson.optString("output", "output.png");
 
+        result.scene.setSoftShadowSamples(renderJson.optInt("softShadowSamples", 8));
+        result.scene.setAoSamples(renderJson.optInt("aoSamples", 0));
+        result.scene.setAoRadius(renderJson.optDouble("aoRadius", 1.0));
+        result.scene.setAoStrength(renderJson.optDouble("aoStrength", 1.0));
+
         result.scene.buildBVH();
         return result;
     }

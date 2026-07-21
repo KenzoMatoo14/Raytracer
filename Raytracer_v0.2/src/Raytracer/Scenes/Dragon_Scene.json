@@ -57,6 +57,7 @@
       "intensity": 10,
       "innerAngle": 30,
       "outerAngle": 55,
+      "radius": 0.5
     },
     {
       "type": "point",
@@ -81,6 +82,10 @@
     "width": 2160,
     "height": 4096,
     "aaSamples": 4,
+    "softShadowSamples": 8,
+    "aoSamples": 8,
+    "aoRadius": 0.8,
+    "aoStrength": 0.85,
     "output": "output.png"
   }
 }

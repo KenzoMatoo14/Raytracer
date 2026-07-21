@@ -339,6 +339,32 @@ public class Vector3D {
     }
 
     /**
+     * Generates a cosine-weighted random direction in the hemisphere oriented around the given
+     * normal. Used for ambient occlusion sampling — cosine weighting biases samples toward
+     * directions that contribute most to a Lambertian ambient term, giving lower-noise AO for
+     * the same sample count than uniform hemisphere sampling.
+     * @param normal The normal defining the hemisphere's orientation (assumed normalized)
+     * @return Random unit direction in the hemisphere around normal
+     */
+    public static Vector3D randomCosineHemisphere(Vector3D normal) {
+        double u1 = Math.random();
+        double u2 = Math.random();
+        double r = Math.sqrt(u1);
+        double theta = 2 * Math.PI * u2;
+
+        double x = r * Math.cos(theta);
+        double y = r * Math.sin(theta);
+        double z = Math.sqrt(Math.max(0.0, 1.0 - u1));
+
+        // Build an orthonormal basis around 'normal' (treated as local Z) to orient the sample
+        Vector3D arbitrary = Math.abs(normal.getY()) < 0.99 ? new Vector3D(0, 1, 0) : new Vector3D(1, 0, 0);
+        Vector3D tangent = normal.cross(arbitrary).normalize();
+        Vector3D bitangent = normal.cross(tangent).normalize();
+
+        return tangent.multiply(x).add(bitangent.multiply(y)).add(normal.multiply(z)).normalize();
+    }
+
+    /**
      * Hash code consistent with equals — uses rounded values to handle epsilon tolerance.
      */
     @Override
